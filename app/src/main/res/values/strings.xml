@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Questor SMS Gateway</string>
+    <string name="channel_name">SMS Gateway Service</string>
+    <string name="channel_description">Maintains active connection and SMS processing with Questor School Manager</string>
+</resources>
