@@ -192,7 +192,14 @@ class GatewayForegroundService : Service() {
 
     private fun applyTransports(settings: com.questor.smsgateway.data.model.GatewaySettings) {
         when (settings.activeTransport) {
-            TransportMode.USB_TETHER, TransportMode.WIFI_LAN -> {
+            TransportMode.USB_TETHER, TransportMode.USB_AOA -> {
+                bluetoothServer.stop()
+                ktorServer.start(settings.serverPort)
+                nsdBroadcaster.start(settings.serverPort)
+                udpDiscoveryServer.start(settings.serverPort)
+                aoaUsbServer.start()
+            }
+            TransportMode.WIFI_LAN -> {
                 bluetoothServer.stop()
                 aoaUsbServer.stop()
                 ktorServer.start(settings.serverPort)
@@ -205,13 +212,6 @@ class GatewayForegroundService : Service() {
                 udpDiscoveryServer.stop()
                 aoaUsbServer.stop()
                 bluetoothServer.start()
-            }
-            TransportMode.USB_AOA -> {
-                ktorServer.stop()
-                nsdBroadcaster.stop()
-                udpDiscoveryServer.stop()
-                bluetoothServer.stop()
-                aoaUsbServer.start()
             }
         }
     }
@@ -243,7 +243,7 @@ class GatewayForegroundService : Service() {
                 app.gatewayRepository.failedCountFlow,
                 app.settingsRepository.settingsFlow
             ) { pending, sent, failed, settings ->
-                val ip = KtorHttpServer.getLocalIpAddress()
+                val ip = KtorHttpServer.getLocalIpAddress(settings.activeTransport)
                 val title = "Questor SMS Gateway — Connected (${settings.activeTransport.displayName})"
                 val content = if (settings.activeTransport == TransportMode.BLUETOOTH) {
                     "Bluetooth Mode Active • $pending pending • $sent sent • $failed failed"

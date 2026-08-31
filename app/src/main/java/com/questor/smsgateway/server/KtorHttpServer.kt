@@ -338,17 +338,56 @@ class KtorHttpServer(
     }
 
     companion object {
-        fun getLocalIpAddress(): String {
+        fun getLocalIpAddress(transportMode: com.questor.smsgateway.data.model.TransportMode? = null): String {
             try {
-                val interfaces = NetworkInterface.getNetworkInterfaces()
-                while (interfaces.hasMoreElements()) {
-                    val intf = interfaces.nextElement()
-                    // Check for tethering (rndis, usb) or wifi (wlan)
+                val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+                val activeInterfaces = interfaces.filter { it.isUp && !it.isLoopback }
+
+                val sortedInterfaces = when (transportMode) {
+                    com.questor.smsgateway.data.model.TransportMode.USB_TETHER,
+                    com.questor.smsgateway.data.model.TransportMode.USB_AOA -> {
+                        activeInterfaces.sortedWith(compareByDescending { iface ->
+                            val name = iface.name.lowercase()
+                            when {
+                                name.startsWith("rndis") || name.startsWith("usb") || name.startsWith("ncm") -> 3
+                                name.startsWith("eth") || name.startsWith("wlan") -> 2
+                                name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("pdp") -> 0
+                                else -> 1
+                            }
+                        })
+                    }
+                    com.questor.smsgateway.data.model.TransportMode.WIFI_LAN -> {
+                        activeInterfaces.sortedWith(compareByDescending { iface ->
+                            val name = iface.name.lowercase()
+                            when {
+                                name.startsWith("wlan") || name.startsWith("tiwlan") || name.startsWith("eth") -> 3
+                                name.startsWith("rndis") || name.startsWith("usb") -> 2
+                                name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("pdp") -> 0
+                                else -> 1
+                            }
+                        })
+                    }
+                    else -> {
+                        activeInterfaces.sortedWith(compareByDescending { iface ->
+                            val name = iface.name.lowercase()
+                            when {
+                                name.startsWith("rndis") || name.startsWith("usb") || name.startsWith("wlan") || name.startsWith("eth") -> 3
+                                name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("pdp") -> 0
+                                else -> 1
+                            }
+                        })
+                    }
+                }
+
+                for (intf in sortedInterfaces) {
                     val addresses = intf.inetAddresses
                     while (addresses.hasMoreElements()) {
                         val addr = addresses.nextElement()
                         if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                            return addr.hostAddress ?: "127.0.0.1"
+                            val host = addr.hostAddress
+                            if (!host.isNullOrBlank() && host != "0.0.0.0") {
+                                return host
+                            }
                         }
                     }
                 }

@@ -89,7 +89,8 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             while (true) {
                 val isRunning = GatewayForegroundService.isServiceRunning
-                val ip = KtorHttpServer.getLocalIpAddress()
+                val settings = app.settingsRepository.settingsFlow.first()
+                val ip = KtorHttpServer.getLocalIpAddress(settings.activeTransport)
                 val sims = app.multiSimManager.getActiveSimCards()
                 val wsActive = app.webSocketHub.hasActiveSessions()
 

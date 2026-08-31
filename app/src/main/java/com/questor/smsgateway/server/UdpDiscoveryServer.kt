@@ -60,7 +60,7 @@ class UdpDiscoveryServer(
                         val settings = settingsRepo.settingsFlow.first()
                         val sims = simManager.getActiveSimCards()
                         val primarySim = sims.firstOrNull()
-                        val localIp = KtorHttpServer.getLocalIpAddress()
+                        val localIp = KtorHttpServer.getLocalIpAddress(settings.activeTransport)
 
                         val responseJson = buildJsonObject {
                             put("service", "QuestorGateway")

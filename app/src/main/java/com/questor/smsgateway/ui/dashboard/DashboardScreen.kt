@@ -10,13 +10,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
@@ -188,27 +191,12 @@ fun DashboardScreen(
             }
         }
 
-        // Statistics Cards Grid Header with Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Message Traffic Queue",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { showResetDialog = true }) {
-                    Text("Reset Stats", fontSize = 12.sp, color = QuestorBlue)
-                }
-                TextButton(onClick = { showClearHistoryDialog = true }) {
-                    Text("Clear Records", fontSize = 12.sp, color = DangerRed)
-                }
-            }
-        }
+        // Statistics Cards Grid Header
+        Text(
+            text = "Message Traffic Queue",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -250,6 +238,39 @@ fun DashboardScreen(
                 accentColor = DangerRed,
                 modifier = Modifier.weight(1f)
             )
+        }
+
+        // Side-by-side Reset Stats and Clear Records buttons below stats cards
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = { showResetDialog = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = QuestorBlue,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Reset Stats", color = QuestorBlue, fontSize = 13.sp)
+            }
+            OutlinedButton(
+                onClick = { showClearHistoryDialog = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = DangerRed,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Clear Records", color = DangerRed, fontSize = 13.sp)
+            }
         }
 
         // Test SMS Action Button

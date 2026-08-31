@@ -113,9 +113,11 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Row(
+                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                    androidx.compose.foundation.layout.FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         TransportMode.values().forEach { mode ->
                             FilterChip(
@@ -123,32 +125,6 @@ fun SettingsScreen(
                                 onClick = { selectedTransport = mode },
                                 label = { Text(mode.displayName) }
                             )
-                        }
-                    }
-
-                    if (selectedTransport != settings.activeTransport) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    WarningYellow.copy(alpha = 0.15f),
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(10.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = WarningYellow,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
-                                Text(
-                                    text = "Transport switched to ${selectedTransport.displayName}. Tap 'Save Settings' below to apply changes.",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
                         }
                     }
                 }
