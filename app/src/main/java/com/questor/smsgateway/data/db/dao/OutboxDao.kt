@@ -39,4 +39,10 @@ interface OutboxDao {
 
     @Query("DELETE FROM outbox_messages WHERE status IN ('SENT', 'DELIVERED') AND createdAtUtc < :beforeUtc")
     suspend fun cleanupOldCompleted(beforeUtc: Long)
+
+    @Query("DELETE FROM outbox_messages WHERE status != 'PENDING'")
+    suspend fun clearCompleted()
+
+    @Query("DELETE FROM outbox_messages")
+    suspend fun clearAll()
 }

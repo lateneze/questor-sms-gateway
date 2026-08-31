@@ -62,6 +62,8 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showTestDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -186,12 +188,27 @@ fun DashboardScreen(
             }
         }
 
-        // Statistics Cards Grid
-        Text(
-            text = "Message Traffic Queue",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        // Statistics Cards Grid Header with Actions
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Message Traffic Queue",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { showResetDialog = true }) {
+                    Text("Reset Stats", fontSize = 12.sp, color = QuestorBlue)
+                }
+                TextButton(onClick = { showClearHistoryDialog = true }) {
+                    Text("Clear Records", fontSize = 12.sp, color = DangerRed)
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -254,6 +271,54 @@ fun DashboardScreen(
             onSend = { phone, msg ->
                 viewModel.sendTestSms(phone, msg)
                 showTestDialog = false
+            }
+        )
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text(text = "Reset Message Queue Stats") },
+            text = { Text("Are you sure you want to reset all queue statistics and message records?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.resetQueueStats()
+                        showResetDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = QuestorBlue)
+                ) {
+                    Text("Reset All")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text(text = "Clear Completed Message History") },
+            text = { Text("This will purge old sent, delivered, and acknowledged messages to save storage.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearCompletedHistory()
+                        showClearHistoryDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+                ) {
+                    Text("Purge History")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }

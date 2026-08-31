@@ -18,6 +18,7 @@ import com.questor.smsgateway.server.AoaUsbServer
 import com.questor.smsgateway.server.BluetoothServer
 import com.questor.smsgateway.server.KtorHttpServer
 import com.questor.smsgateway.server.NsdDiscoveryBroadcaster
+import com.questor.smsgateway.server.UdpDiscoveryServer
 import com.questor.smsgateway.telephony.MultiSimManager
 import com.questor.smsgateway.telephony.SmsDispatcher
 import com.questor.smsgateway.ui.MainActivity
@@ -35,6 +36,7 @@ class GatewayForegroundService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.questor.smsgateway.START_SERVICE"
         const val ACTION_STOP = "com.questor.smsgateway.STOP_SERVICE"
+        const val ACTION_RELOAD = "com.questor.smsgateway.RELOAD_SETTINGS"
 
         @Volatile
         var isServiceRunning: Boolean = false
@@ -57,6 +59,18 @@ class GatewayForegroundService : Service() {
             }
             context.startService(intent)
         }
+
+        fun reloadService(context: Context) {
+            if (!isServiceRunning) return
+            val intent = Intent(context, GatewayForegroundService::class.java).apply {
+                action = ACTION_RELOAD
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO)
@@ -65,6 +79,7 @@ class GatewayForegroundService : Service() {
     private lateinit var wakeLockManager: WakeLockManager
     private lateinit var ktorServer: KtorHttpServer
     private lateinit var nsdBroadcaster: NsdDiscoveryBroadcaster
+    private lateinit var udpDiscoveryServer: UdpDiscoveryServer
     private lateinit var bluetoothServer: BluetoothServer
     private lateinit var aoaUsbServer: AoaUsbServer
     private lateinit var smsDispatcher: SmsDispatcher
@@ -83,6 +98,12 @@ class GatewayForegroundService : Service() {
             app.loggerRepository
         )
         nsdBroadcaster = NsdDiscoveryBroadcaster(this, app.loggerRepository)
+        udpDiscoveryServer = UdpDiscoveryServer(
+            this,
+            app.settingsRepository,
+            app.multiSimManager,
+            app.loggerRepository
+        )
         bluetoothServer = BluetoothServer(
             this,
             app.gatewayRepository,
@@ -109,13 +130,22 @@ class GatewayForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopForegroundService()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopForegroundService()
+                return START_NOT_STICKY
+            }
+            ACTION_RELOAD -> {
+                if (isServiceRunning) {
+                    reloadActiveTransports()
+                }
+                return START_STICKY
+            }
+            else -> {
+                startForegroundService()
+                return START_STICKY
+            }
         }
-
-        startForegroundService()
-        return START_STICKY
     }
 
     private fun startForegroundService() {
@@ -141,21 +171,48 @@ class GatewayForegroundService : Service() {
                 wakeLockManager.acquire()
             }
 
-            // Start embedded engines based on settings
-            ktorServer.start(settings.serverPort)
-            nsdBroadcaster.start(settings.serverPort)
-
-            if (settings.activeTransport == TransportMode.BLUETOOTH) {
-                bluetoothServer.start()
-            } else if (settings.activeTransport == TransportMode.USB_AOA) {
-                aoaUsbServer.start()
-            }
+            applyTransports(settings)
 
             // Start queue dispatcher
             smsDispatcher.start()
-            app.loggerRepository.i("ForegroundService", "Questor SMS Gateway active and listening on port ${settings.serverPort}")
+            app.loggerRepository.i("ForegroundService", "Questor SMS Gateway active (${settings.activeTransport.displayName})")
 
             observeStatsAndUpdateNotification()
+        }
+    }
+
+    private fun reloadActiveTransports() {
+        val app = application as GatewayApp
+        serviceScope.launch {
+            val settings = app.settingsRepository.settingsFlow.first()
+            applyTransports(settings)
+            app.loggerRepository.i("ForegroundService", "Reloaded transport listeners: ${settings.activeTransport.displayName}")
+        }
+    }
+
+    private fun applyTransports(settings: com.questor.smsgateway.data.model.GatewaySettings) {
+        when (settings.activeTransport) {
+            TransportMode.USB_TETHER, TransportMode.WIFI_LAN -> {
+                bluetoothServer.stop()
+                aoaUsbServer.stop()
+                ktorServer.start(settings.serverPort)
+                nsdBroadcaster.start(settings.serverPort)
+                udpDiscoveryServer.start(settings.serverPort)
+            }
+            TransportMode.BLUETOOTH -> {
+                ktorServer.stop()
+                nsdBroadcaster.stop()
+                udpDiscoveryServer.stop()
+                aoaUsbServer.stop()
+                bluetoothServer.start()
+            }
+            TransportMode.USB_AOA -> {
+                ktorServer.stop()
+                nsdBroadcaster.stop()
+                udpDiscoveryServer.stop()
+                bluetoothServer.stop()
+                aoaUsbServer.start()
+            }
         }
     }
 
@@ -165,6 +222,7 @@ class GatewayForegroundService : Service() {
         smsDispatcher.stop()
         ktorServer.stop()
         nsdBroadcaster.stop()
+        udpDiscoveryServer.stop()
         bluetoothServer.stop()
         aoaUsbServer.stop()
         wakeLockManager.release()
@@ -187,7 +245,11 @@ class GatewayForegroundService : Service() {
             ) { pending, sent, failed, settings ->
                 val ip = KtorHttpServer.getLocalIpAddress()
                 val title = "Questor SMS Gateway — Connected (${settings.activeTransport.displayName})"
-                val content = "IP: $ip:${settings.serverPort} • $pending pending • $sent sent • $failed failed"
+                val content = if (settings.activeTransport == TransportMode.BLUETOOTH) {
+                    "Bluetooth Mode Active • $pending pending • $sent sent • $failed failed"
+                } else {
+                    "IP: $ip:${settings.serverPort} • $pending pending • $sent sent • $failed failed"
+                }
                 Pair(title, content)
             }.collect { (title, content) ->
                 val notification = buildNotification(title, content)

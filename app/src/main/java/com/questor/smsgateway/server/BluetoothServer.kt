@@ -28,8 +28,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -40,8 +38,10 @@ import java.util.UUID
 @Serializable
 data class BtEnvelopeRequest(
     val id: String = "",
+    val requestId: String = "",
     val action: String = "",
     val key: String? = null,
+    val headers: Map<String, String>? = null,
     val payload: JsonObject? = null
 )
 
@@ -54,6 +54,7 @@ class BluetoothServer(
 ) {
     companion object {
         val SERVICE_UUID: UUID = UUID.fromString("7b5e1ad3-5ce2-4e52-9f5b-fba319d2d6b0")
+        val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         const val SERVICE_NAME = "QuestorSMSBridge"
     }
 
@@ -74,15 +75,27 @@ class BluetoothServer(
         isRunning = true
         serverJob = scope.launch {
             try {
-                serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
-                logger.i("BluetoothServer", "Bluetooth RFCOMM listening on $SERVICE_UUID")
+                // Try listening using RFCOMM with custom service UUID, fallback to insecure or SPP
+                serverSocket = try {
+                    bluetoothAdapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
+                } catch (e: Exception) {
+                    logger.w("BluetoothServer", "Secure RFCOMM failed, trying insecure RFCOMM: ${e.message}")
+                    try {
+                        bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
+                    } catch (e2: Exception) {
+                        logger.w("BluetoothServer", "Insecure RFCOMM failed, trying standard SPP UUID: ${e2.message}")
+                        bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SPP_UUID)
+                    }
+                }
+
+                logger.i("BluetoothServer", "Bluetooth RFCOMM listening for connections")
 
                 while (isActive && isRunning) {
                     val socket: BluetoothSocket = try {
                         serverSocket?.accept() ?: break
                     } catch (e: Exception) {
                         if (!isRunning) break
-                        logger.w("BluetoothServer", "Error accepting BT socket", e)
+                        logger.w("BluetoothServer", "Error accepting BT socket: ${e.message}")
                         break
                     }
 
@@ -100,7 +113,7 @@ class BluetoothServer(
 
     private fun handleClientSocket(socket: BluetoothSocket) {
         scope.launch {
-            logger.i("BluetoothServer", "Connected to Bluetooth client: ${socket.remoteDevice?.name}")
+            logger.i("BluetoothServer", "Connected to Bluetooth client: ${socket.remoteDevice?.name ?: socket.remoteDevice?.address}")
             try {
                 val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
                 val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
@@ -125,20 +138,24 @@ class BluetoothServer(
     private suspend fun processCommand(line: String): String {
         return try {
             val req = json.decodeFromString<BtEnvelopeRequest>(line)
+            val effectiveId = if (req.id.isNotBlank()) req.id else req.requestId
             val settings = settingsRepo.settingsFlow.first()
 
-            if (settings.gatewayKey.isNotBlank() && req.key != settings.gatewayKey) {
+            val providedKey = req.key ?: req.headers?.get("X-Gateway-Key")
+            if (settings.gatewayKey.isNotBlank() && providedKey != settings.gatewayKey) {
                 return json.encodeToString(
                     buildJsonObject {
-                        put("id", req.id)
+                        put("id", effectiveId)
+                        put("requestId", effectiveId)
                         put("success", false)
+                        put("ok", false)
                         put("error", "Unauthorized")
                     }
                 )
             }
 
             when (req.action.uppercase()) {
-                "GET_HEALTH", "HEALTH" -> {
+                "GET_HEALTH", "HEALTH", "PROBE" -> {
                     val sims = simManager.getActiveSimCards()
                     val primarySim = sims.firstOrNull()
                     val pending = gatewayRepo.pendingCountFlow.first()
@@ -146,12 +163,15 @@ class BluetoothServer(
                     val delivered = gatewayRepo.deliveredCountFlow.first()
                     val failed = gatewayRepo.failedCountFlow.first()
                     val inbound = gatewayRepo.inboundCountFlow.first()
+                    val model = simManager.getDeviceModel()
+                    val carrier = primarySim?.carrierName ?: "Ready"
+                    val signal = primarySim?.signalDbm ?: "Level 4/4"
 
                     val health = GatewayHealthResponse(
                         isReady = true,
-                        model = simManager.getDeviceModel(),
-                        carrier = primarySim?.carrierName ?: "Ready",
-                        signalStrength = primarySim?.signalDbm ?: "Level 4/4",
+                        model = model,
+                        carrier = carrier,
+                        signalStrength = signal,
                         pendingCount = pending,
                         sentCount = sent,
                         deliveredCount = delivered,
@@ -162,8 +182,17 @@ class BluetoothServer(
 
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", true)
+                            put("ok", true)
+                            put("ready", true)
+                            put("isReady", true)
+                            put("model", model)
+                            put("carrier", carrier)
+                            put("networkOperator", carrier)
+                            put("signalStrength", signal)
+                            put("transport", "Bluetooth")
                             put("data", json.encodeToString(health))
                         }
                     )
@@ -181,8 +210,10 @@ class BluetoothServer(
                     gatewayRepo.enqueueOutboxMessage(entity)
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", true)
+                            put("ok", true)
                             put("data", "accepted")
                         }
                     )
@@ -200,8 +231,10 @@ class BluetoothServer(
                     }
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", true)
+                            put("ok", true)
                             put("data", json.encodeToString(list))
                         }
                     )
@@ -212,8 +245,10 @@ class BluetoothServer(
                     gatewayRepo.acknowledgeInbound(ackReq.messageIds)
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", true)
+                            put("ok", true)
                             put("data", ackReq.messageIds.size)
                         }
                     )
@@ -224,8 +259,10 @@ class BluetoothServer(
                     val reports = gatewayRepo.getDeliveryReportsBatch(batchReq.messageIds)
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", true)
+                            put("ok", true)
                             put("data", json.encodeToString(reports))
                         }
                     )
@@ -233,8 +270,10 @@ class BluetoothServer(
                 else -> {
                     json.encodeToString(
                         buildJsonObject {
-                            put("id", req.id)
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
                             put("success", false)
+                            put("ok", false)
                             put("error", "Unknown action: ${req.action}")
                         }
                     )
@@ -244,6 +283,7 @@ class BluetoothServer(
             json.encodeToString(
                 buildJsonObject {
                     put("success", false)
+                    put("ok", false)
                     put("error", e.message ?: "Processing error")
                 }
             )

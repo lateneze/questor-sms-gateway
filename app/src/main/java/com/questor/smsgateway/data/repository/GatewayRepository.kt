@@ -75,4 +75,17 @@ class GatewayRepository(private val db: GatewayDatabase) {
     suspend fun acknowledgeDeliveryReports(messageIds: List<String>): Int {
         return db.deliveryReportDao().markAcknowledged(messageIds)
     }
+
+    // Maintenance & Stats Reset Operations
+    suspend fun clearCompletedHistory() {
+        db.outboxDao().clearCompleted()
+        db.inboundDao().clearAcknowledged()
+        db.deliveryReportDao().clearAcknowledged()
+    }
+
+    suspend fun resetAllQueueStats() {
+        db.outboxDao().clearAll()
+        db.inboundDao().clearAll()
+        db.deliveryReportDao().clearAll()
+    }
 }

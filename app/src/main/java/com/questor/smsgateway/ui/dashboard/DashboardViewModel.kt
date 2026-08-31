@@ -128,4 +128,18 @@ class DashboardViewModel : ViewModel() {
             app.loggerRepository.i("DashboardViewModel", "Enqueued test SMS $msgId to $toPhone")
         }
     }
+
+    fun resetQueueStats() {
+        viewModelScope.launch {
+            app.gatewayRepository.resetAllQueueStats()
+            app.loggerRepository.i("DashboardViewModel", "All message queue stats and records reset")
+        }
+    }
+
+    fun clearCompletedHistory() {
+        viewModelScope.launch {
+            app.gatewayRepository.clearCompletedHistory()
+            app.loggerRepository.i("DashboardViewModel", "Completed message history cleared")
+        }
+    }
 }

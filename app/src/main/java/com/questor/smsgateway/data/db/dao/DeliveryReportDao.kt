@@ -22,4 +22,10 @@ interface DeliveryReportDao {
 
     @Query("DELETE FROM delivery_reports WHERE isAcknowledged = 1 AND updatedAtUtc < :beforeUtc")
     suspend fun cleanupOldAcknowledged(beforeUtc: Long)
+
+    @Query("DELETE FROM delivery_reports WHERE isAcknowledged = 1")
+    suspend fun clearAcknowledged()
+
+    @Query("DELETE FROM delivery_reports")
+    suspend fun clearAll()
 }

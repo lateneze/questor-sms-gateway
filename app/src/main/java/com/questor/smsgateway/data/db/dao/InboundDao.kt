@@ -29,4 +29,10 @@ interface InboundDao {
 
     @Query("DELETE FROM inbound_messages WHERE isAcknowledged = 1 AND receivedAtUtc < :beforeUtc")
     suspend fun cleanupOldAcknowledged(beforeUtc: Long)
+
+    @Query("DELETE FROM inbound_messages WHERE isAcknowledged = 1")
+    suspend fun clearAcknowledged()
+
+    @Query("DELETE FROM inbound_messages")
+    suspend fun clearAll()
 }

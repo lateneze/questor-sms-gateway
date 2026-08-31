@@ -10,7 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questor.smsgateway.GatewayApp
 import com.questor.smsgateway.data.model.GatewaySettings
-import com.questor.smsgateway.data.model.TransportMode
+import com.questor.smsgateway.service.GatewayForegroundService
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -27,10 +27,13 @@ class SettingsViewModel : ViewModel() {
             initialValue = GatewaySettings()
         )
 
-    fun updateSettings(newSettings: GatewaySettings) {
+    fun updateSettings(context: Context, newSettings: GatewaySettings) {
         viewModelScope.launch {
             app.settingsRepository.updateSettings(newSettings)
-            app.loggerRepository.i("SettingsViewModel", "Updated gateway settings")
+            if (GatewayForegroundService.isServiceRunning) {
+                GatewayForegroundService.reloadService(context)
+            }
+            app.loggerRepository.i("SettingsViewModel", "Updated gateway settings to transport: ${newSettings.activeTransport.displayName}")
         }
     }
 
