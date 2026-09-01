@@ -139,26 +139,39 @@ class AoaUsbServer(
                         }
                     )
                 }
-                "SEND", "SEND_SMS" -> {
+                "SEND", "SEND_SMS", "MESSAGES.SEND", "SEND_MESSAGE" -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val sendReq = json.decodeFromJsonElement<SendSmsRequest>(payload)
+                    val messageId = payload["messageId"]?.toString()?.trim('"') ?: req.id.ifBlank { java.util.UUID.randomUUID().toString() }
+                    val toPhone = payload["to"]?.toString()?.trim('"')
+                        ?: payload["toPhone"]?.toString()?.trim('"')
+                        ?: payload["recipient"]?.toString()?.trim('"')
+                        ?: error("Missing 'to' or 'toPhone' in payload")
+                    val messageText = payload["message"]?.toString()?.trim('"')
+                        ?: payload["messageText"]?.toString()?.trim('"')
+                        ?: payload["text"]?.toString()?.trim('"')
+                        ?: error("Missing 'message' or 'messageText' in payload")
+                    val simSlot = payload["simSlot"]?.toString()?.toIntOrNull()
+
                     val entity = OutboxMessageEntity(
-                        messageId = sendReq.messageId,
-                        toPhone = sendReq.to,
-                        messageText = sendReq.message,
-                        simSlot = sendReq.simSlot,
+                        messageId = messageId,
+                        toPhone = toPhone,
+                        messageText = messageText,
+                        simSlot = simSlot,
                         status = "PENDING"
                     )
                     gatewayRepo.enqueueOutboxMessage(entity)
                     json.encodeToString(
                         buildJsonObject {
                             put("id", req.id)
+                            put("messageId", messageId)
                             put("success", true)
+                            put("ok", true)
+                            put("accepted", true)
                             put("data", "accepted")
                         }
                     )
                 }
-                "FETCH_INBOUND" -> {
+                "FETCH_INBOUND", "INBOUND.LIST", "INBOUND_LIST", "INBOUND" -> {
                     val inbounds = gatewayRepo.getUnacknowledgedInbound(100)
                     val list = inbounds.map {
                         InboundSmsDto(
@@ -169,35 +182,54 @@ class AoaUsbServer(
                             simSlot = it.simSlot
                         )
                     }
+                    val rawListJson = json.encodeToString(list)
                     json.encodeToString(
                         buildJsonObject {
                             put("id", req.id)
                             put("success", true)
-                            put("data", json.encodeToString(list))
+                            put("ok", true)
+                            put("items", json.parseToJsonElement(rawListJson))
+                            put("data", json.parseToJsonElement(rawListJson))
                         }
                     )
                 }
-                "ACK_INBOUND" -> {
+                "ACK_INBOUND", "INBOUND.ACK", "ACK_INBOUND_LIST" -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val ackReq = json.decodeFromJsonElement<InboundAckRequest>(payload)
-                    gatewayRepo.acknowledgeInbound(ackReq.messageIds)
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else emptyList()
+
+                    if (messageIds.isNotEmpty()) {
+                        gatewayRepo.acknowledgeInbound(messageIds)
+                    }
                     json.encodeToString(
                         buildJsonObject {
                             put("id", req.id)
                             put("success", true)
-                            put("data", ackReq.messageIds.size)
+                            put("ok", true)
+                            put("data", messageIds.size)
                         }
                     )
                 }
-                "DELIVERY_BATCH" -> {
+                "DELIVERY_BATCH", "DELIVERY.BATCH", "GET_DELIVERY_STATUS", "DELIVERY.GET" -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val batchReq = json.decodeFromJsonElement<DeliveryBatchRequest>(payload)
-                    val reports = gatewayRepo.getDeliveryReportsBatch(batchReq.messageIds)
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else {
+                        val singleId = payload["messageId"]?.toString()?.trim('"')
+                        if (!singleId.isNullOrBlank()) listOf(singleId) else emptyList()
+                    }
+                    val reports = gatewayRepo.getDeliveryReportsBatch(messageIds)
+                    val rawReportsJson = json.encodeToString(reports)
                     json.encodeToString(
                         buildJsonObject {
                             put("id", req.id)
                             put("success", true)
-                            put("data", json.encodeToString(reports))
+                            put("ok", true)
+                            put("results", json.parseToJsonElement(rawReportsJson))
+                            put("data", json.parseToJsonElement(rawReportsJson))
                         }
                     )
                 }
@@ -206,6 +238,7 @@ class AoaUsbServer(
                         buildJsonObject {
                             put("id", req.id)
                             put("success", false)
+                            put("ok", false)
                             put("error", "Unknown action: ${req.action}")
                         }
                     )

@@ -75,20 +75,20 @@ class BluetoothServer(
         isRunning = true
         serverJob = scope.launch {
             try {
-                // Try listening using RFCOMM with custom service UUID, fallback to insecure or SPP
+                // Prioritize standard Serial Port Profile (SPP) with insecure RFCOMM for maximum Windows compatibility
                 serverSocket = try {
-                    bluetoothAdapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
+                    bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SPP_UUID)
                 } catch (e: Exception) {
-                    logger.w("BluetoothServer", "Secure RFCOMM failed, trying insecure RFCOMM: ${e.message}")
+                    logger.w("BluetoothServer", "Insecure SPP RFCOMM failed, trying secure SPP: ${e.message}")
                     try {
-                        bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
+                        bluetoothAdapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SPP_UUID)
                     } catch (e2: Exception) {
-                        logger.w("BluetoothServer", "Insecure RFCOMM failed, trying standard SPP UUID: ${e2.message}")
-                        bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SPP_UUID)
+                        logger.w("BluetoothServer", "SPP failed, trying custom SERVICE_UUID: ${e2.message}")
+                        bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID)
                     }
                 }
 
-                logger.i("BluetoothServer", "Bluetooth RFCOMM listening for connections")
+                logger.i("BluetoothServer", "Bluetooth RFCOMM listening for connections (SPP/RFCOMM ready)")
 
                 while (isActive && isRunning) {
                     val socket: BluetoothSocket = try {
@@ -141,7 +141,7 @@ class BluetoothServer(
             val effectiveId = if (req.id.isNotBlank()) req.id else req.requestId
             val settings = settingsRepo.settingsFlow.first()
 
-            val providedKey = req.key ?: req.headers?.get("X-Gateway-Key")
+            val providedKey = req.key ?: req.headers?.get("X-Gateway-Key") ?: req.headers?.get("X-Questor-Gateway-Key")
             if (settings.gatewayKey.isNotBlank() && providedKey != settings.gatewayKey) {
                 return json.encodeToString(
                     buildJsonObject {
@@ -154,8 +154,9 @@ class BluetoothServer(
                 )
             }
 
-            when (req.action.uppercase()) {
-                "GET_HEALTH", "HEALTH", "PROBE" -> {
+            val normalizedAction = req.action.trim().uppercase()
+            when {
+                normalizedAction in listOf("GET_HEALTH", "HEALTH", "PROBE", "GATEWAY.HEALTH") -> {
                     val sims = simManager.getActiveSimCards()
                     val primarySim = sims.firstOrNull()
                     val pending = gatewayRepo.pendingCountFlow.first()
@@ -197,14 +198,24 @@ class BluetoothServer(
                         }
                     )
                 }
-                "SEND", "SEND_SMS" -> {
+                normalizedAction in listOf("SEND", "SEND_SMS", "MESSAGES.SEND", "SEND_MESSAGE") -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val sendReq = json.decodeFromJsonElement<SendSmsRequest>(payload)
+                    val messageId = payload["messageId"]?.toString()?.trim('"') ?: effectiveId.ifBlank { UUID.randomUUID().toString() }
+                    val toPhone = payload["to"]?.toString()?.trim('"')
+                        ?: payload["toPhone"]?.toString()?.trim('"')
+                        ?: payload["recipient"]?.toString()?.trim('"')
+                        ?: error("Missing 'to' or 'toPhone' field in payload")
+                    val messageText = payload["message"]?.toString()?.trim('"')
+                        ?: payload["messageText"]?.toString()?.trim('"')
+                        ?: payload["text"]?.toString()?.trim('"')
+                        ?: error("Missing 'message' or 'messageText' field in payload")
+                    val simSlot = payload["simSlot"]?.toString()?.toIntOrNull()
+
                     val entity = OutboxMessageEntity(
-                        messageId = sendReq.messageId,
-                        toPhone = sendReq.to,
-                        messageText = sendReq.message,
-                        simSlot = sendReq.simSlot,
+                        messageId = messageId,
+                        toPhone = toPhone,
+                        messageText = messageText,
+                        simSlot = simSlot,
                         status = "PENDING"
                     )
                     gatewayRepo.enqueueOutboxMessage(entity)
@@ -212,13 +223,15 @@ class BluetoothServer(
                         buildJsonObject {
                             put("id", effectiveId)
                             put("requestId", effectiveId)
+                            put("messageId", messageId)
                             put("success", true)
                             put("ok", true)
+                            put("accepted", true)
                             put("data", "accepted")
                         }
                     )
                 }
-                "FETCH_INBOUND" -> {
+                normalizedAction in listOf("FETCH_INBOUND", "INBOUND.LIST", "INBOUND_LIST", "INBOUND") -> {
                     val inbounds = gatewayRepo.getUnacknowledgedInbound(100)
                     val list = inbounds.map {
                         InboundSmsDto(
@@ -229,41 +242,77 @@ class BluetoothServer(
                             simSlot = it.simSlot
                         )
                     }
+                    val rawListJson = json.encodeToString(list)
                     json.encodeToString(
                         buildJsonObject {
                             put("id", effectiveId)
                             put("requestId", effectiveId)
                             put("success", true)
                             put("ok", true)
-                            put("data", json.encodeToString(list))
+                            put("items", json.parseToJsonElement(rawListJson))
+                            put("data", json.parseToJsonElement(rawListJson))
                         }
                     )
                 }
-                "ACK_INBOUND" -> {
+                normalizedAction in listOf("ACK_INBOUND", "INBOUND.ACK", "ACK_INBOUND_LIST") -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val ackReq = json.decodeFromJsonElement<InboundAckRequest>(payload)
-                    gatewayRepo.acknowledgeInbound(ackReq.messageIds)
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else emptyList()
+
+                    if (messageIds.isNotEmpty()) {
+                        gatewayRepo.acknowledgeInbound(messageIds)
+                    }
                     json.encodeToString(
                         buildJsonObject {
                             put("id", effectiveId)
                             put("requestId", effectiveId)
                             put("success", true)
                             put("ok", true)
-                            put("data", ackReq.messageIds.size)
+                            put("data", messageIds.size)
                         }
                     )
                 }
-                "DELIVERY_BATCH" -> {
+                normalizedAction in listOf("DELIVERY_BATCH", "DELIVERY.BATCH", "GET_DELIVERY_STATUS", "DELIVERY.GET") -> {
                     val payload = req.payload ?: error("Missing payload")
-                    val batchReq = json.decodeFromJsonElement<DeliveryBatchRequest>(payload)
-                    val reports = gatewayRepo.getDeliveryReportsBatch(batchReq.messageIds)
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else {
+                        val singleId = payload["messageId"]?.toString()?.trim('"')
+                        if (!singleId.isNullOrBlank()) listOf(singleId) else emptyList()
+                    }
+                    val reports = gatewayRepo.getDeliveryReportsBatch(messageIds)
+                    val rawReportsJson = json.encodeToString(reports)
                     json.encodeToString(
                         buildJsonObject {
                             put("id", effectiveId)
                             put("requestId", effectiveId)
                             put("success", true)
                             put("ok", true)
-                            put("data", json.encodeToString(reports))
+                            put("results", json.parseToJsonElement(rawReportsJson))
+                            put("data", json.parseToJsonElement(rawReportsJson))
+                        }
+                    )
+                }
+                normalizedAction in listOf("ACK_DELIVERY", "DELIVERY.ACK") -> {
+                    val payload = req.payload ?: error("Missing payload")
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else emptyList()
+
+                    if (messageIds.isNotEmpty()) {
+                        gatewayRepo.acknowledgeDeliveryReports(messageIds)
+                    }
+                    json.encodeToString(
+                        buildJsonObject {
+                            put("id", effectiveId)
+                            put("requestId", effectiveId)
+                            put("success", true)
+                            put("ok", true)
+                            put("data", messageIds.size)
                         }
                     )
                 }

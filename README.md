@@ -11,7 +11,7 @@ A dedicated, high-reliability Android SMS Gateway appliance built for **Questor 
   - **USB Tethering** (Primary USB mode: standard TCP/IP over USB cable without ADB requirements).
   - **Wi-Fi / LAN / Hotspot / Wi-Fi Direct** (Local network with auto-discovery via mDNS Zeroconf `_questorgw._tcp.`).
   - **Bluetooth RFCOMM** (Direct serial socket communication on UUID `7b5e1ad3-5ce2-4e52-9f5b-fba319d2d6b0`).
-  - **Android Open Accessory (AOA 2.0)** (Direct USB streaming fallback).
+  - **Android Open Accessory (AOA 2.0)** (Direct USB streaming fallback). (winusb zadig)
 - **Hybrid REST + WebSocket Protocol**:
   - REST endpoints on port `8765` for SMS dispatching, health probes, and inbound sync.
   - Real-time bidirectional WebSocket channel (`/api/v1/gateway/ws`) for instant push of incoming SMS and live delivery status receipts.
