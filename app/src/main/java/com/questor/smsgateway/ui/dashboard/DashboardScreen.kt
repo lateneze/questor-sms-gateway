@@ -269,7 +269,7 @@ fun DashboardScreen(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Clear Records", color = DangerRed, fontSize = 13.sp)
+                Text("Clear Cache", color = DangerRed, fontSize = 13.sp)
             }
         }
 
@@ -323,8 +323,8 @@ fun DashboardScreen(
     if (showClearHistoryDialog) {
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text(text = "Clear Completed Message History") },
-            text = { Text("This will purge old sent, delivered, and acknowledged messages to save storage.") },
+            title = { Text(text = "Clear Local Message Cache") },
+            text = { Text("This will purge completed messages (sent, delivered, and acknowledged) from this Android device's local database to reclaim device storage.\n\nThis only affects this phone — message records, logs, and billing on the Questor School Manager server will not be deleted.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -333,7 +333,7 @@ fun DashboardScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
                 ) {
-                    Text("Purge History")
+                    Text("Purge Local Cache")
                 }
             },
             dismissButton = {

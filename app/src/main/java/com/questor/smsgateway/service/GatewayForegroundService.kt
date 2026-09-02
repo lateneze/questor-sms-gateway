@@ -21,6 +21,11 @@ import com.questor.smsgateway.server.NsdDiscoveryBroadcaster
 import com.questor.smsgateway.server.UdpDiscoveryServer
 import com.questor.smsgateway.telephony.MultiSimManager
 import com.questor.smsgateway.telephony.SmsDispatcher
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import com.questor.smsgateway.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +88,10 @@ class GatewayForegroundService : Service() {
     private lateinit var bluetoothServer: BluetoothServer
     private lateinit var aoaUsbServer: AoaUsbServer
     private lateinit var smsDispatcher: SmsDispatcher
+
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var lastKnownIp: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -172,6 +181,7 @@ class GatewayForegroundService : Service() {
             }
 
             applyTransports(settings)
+            registerNetworkCallback()
 
             // Start queue dispatcher
             smsDispatcher.start()
@@ -216,8 +226,71 @@ class GatewayForegroundService : Service() {
         }
     }
 
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        connectivityManager = cm
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                handleNetworkChange("Network Available")
+            }
+
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                handleNetworkChange("Link Properties Changed")
+            }
+
+            override fun onLost(network: Network) {
+                handleNetworkChange("Network Lost")
+            }
+        }
+        networkCallback = callback
+        try {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            cm.registerNetworkCallback(request, callback)
+        } catch (_: Exception) {
+            try {
+                cm.registerDefaultNetworkCallback(callback)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val cm = connectivityManager
+        val cb = networkCallback
+        if (cm != null && cb != null) {
+            try {
+                cm.unregisterNetworkCallback(cb)
+            } catch (_: Exception) {}
+        }
+        networkCallback = null
+        connectivityManager = null
+    }
+
+    private fun handleNetworkChange(reason: String) {
+        val app = application as GatewayApp
+        serviceScope.launch {
+            val settings = app.settingsRepository.settingsFlow.first()
+            if (settings.activeTransport == TransportMode.WIFI_LAN ||
+                settings.activeTransport == TransportMode.USB_TETHER ||
+                settings.activeTransport == TransportMode.USB_AOA) {
+                val currentIp = KtorHttpServer.getLocalIpAddress(settings.activeTransport)
+                if (currentIp != lastKnownIp && currentIp != "127.0.0.1") {
+                    app.loggerRepository.i("DynamicIp", "IP change detected ($reason): $lastKnownIp -> $currentIp. Refreshing discovery broadcast...")
+                    lastKnownIp = currentIp
+                    // Refresh NSD broadcaster so mDNS advertises the new IP
+                    nsdBroadcaster.stop()
+                    nsdBroadcaster.start(settings.serverPort)
+                }
+            }
+        }
+    }
+
     private fun stopForegroundService() {
         isServiceRunning = false
+        unregisterNetworkCallback()
         statsJob?.cancel()
         smsDispatcher.stop()
         ktorServer.stop()
