@@ -62,20 +62,46 @@ class SmsDispatcher(
         workerJob = null
     }
 
+    private fun normalizePhoneNumber(phone: String?): String {
+        if (phone.isNullOrBlank()) return ""
+        val trimmed = phone.trim()
+            .replace(" ", "")
+            .replace("-", "")
+            .replace("(", "")
+            .replace(")", "")
+
+        if (trimmed.startsWith("+")) return trimmed
+        if (trimmed.startsWith("00")) return "+" + trimmed.substring(2)
+        if (trimmed.startsWith("0") && trimmed.length == 10) return "+233" + trimmed.substring(1)
+        if (trimmed.length == 9 && (trimmed.startsWith("2") || trimmed.startsWith("5") || trimmed.startsWith("3"))) return "+233" + trimmed
+        return trimmed
+    }
+
     private suspend fun dispatchMessage(message: OutboxMessageEntity) {
         try {
-            logger.i("SmsDispatcher", "Dispatching SMS ${message.messageId} to ${message.toPhone}")
+            val destinationAddress = normalizePhoneNumber(message.toPhone).ifEmpty { message.toPhone.trim() }
+            logger.i("SmsDispatcher", "Dispatching SMS ${message.messageId} to $destinationAddress (raw: ${message.toPhone})")
 
             val settings = settingsRepo.settingsFlow.first()
             val targetSlot = message.simSlot ?: settings.preferredSimSlot
             val subId = simManager.getSubscriptionIdForSlot(targetSlot)
 
-            val smsManager: SmsManager = if (subId != null && subId > 0) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    context.getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
-                } else {
-                    @Suppress("DEPRECATION")
-                    SmsManager.getSmsManagerForSubscriptionId(subId)
+            val smsManager: SmsManager = if (subId != null && simManager.isRealSubscriptionId(subId)) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        SmsManager.getSmsManagerForSubscriptionId(subId)
+                    }
+                } catch (e: Exception) {
+                    logger.w("SmsDispatcher", "Failed to create SmsManager for subscription $subId, falling back to default", e)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(SmsManager::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        SmsManager.getDefault()
+                    }
                 }
             } else {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -139,7 +165,7 @@ class SmsDispatcher(
 
             if (totalParts == 1) {
                 smsManager.sendTextMessage(
-                    message.toPhone,
+                    destinationAddress,
                     null,
                     parts[0],
                     sentIntents[0],
@@ -147,7 +173,7 @@ class SmsDispatcher(
                 )
             } else {
                 smsManager.sendMultipartTextMessage(
-                    message.toPhone,
+                    destinationAddress,
                     null,
                     parts,
                     sentIntents,

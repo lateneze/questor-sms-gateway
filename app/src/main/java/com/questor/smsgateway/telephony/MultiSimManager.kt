@@ -60,24 +60,57 @@ class MultiSimManager(private val context: Context) {
         }
     }
 
+    fun isRealSubscriptionId(subId: Int?): Boolean {
+        if (subId == null) return false
+        if (subId <= 0) return false
+        if (subId == SubscriptionManager.DEFAULT_SUBSCRIPTION_ID) return false
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (!SubscriptionManager.isValidSubscriptionId(subId)) return false
+        }
+        return true
+    }
+
     fun getSubscriptionIdForSlot(preferredSlot: Int): Int? {
         val simList = getActiveSimCards()
         if (simList.isEmpty()) return null
 
-        return when (preferredSlot) {
+        val candidate = when (preferredSlot) {
             1 -> simList.firstOrNull { it.slotIndex == 0 }?.subscriptionId
             2 -> simList.firstOrNull { it.slotIndex == 1 }?.subscriptionId
-            else -> simList.firstOrNull()?.subscriptionId
+            else -> {
+                val defaultSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    SubscriptionManager.getDefaultSmsSubscriptionId()
+                } else {
+                    @Suppress("DEPRECATION")
+                    SubscriptionManager.getDefaultSubscriptionId()
+                }
+                if (isRealSubscriptionId(defaultSubId)) {
+                    defaultSubId
+                } else {
+                    simList.firstOrNull()?.subscriptionId
+                }
+            }
         }
+
+        return if (isRealSubscriptionId(candidate)) candidate else null
     }
 
     private fun getDefaultSimFallback(): List<SimCardInfo> {
         val networkOperator = telephonyManager?.networkOperatorName?.takeIf { it.isNotBlank() } ?: "Cellular SIM"
         val country = telephonyManager?.networkCountryIso?.uppercase() ?: ""
+        val defaultSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            SubscriptionManager.getDefaultSmsSubscriptionId()
+        } else {
+            @Suppress("DEPRECATION")
+            SubscriptionManager.getDefaultSubscriptionId()
+        }
+        val safeSubId = if (isRealSubscriptionId(defaultSubId)) defaultSubId else -1
+
         return listOf(
             SimCardInfo(
                 slotIndex = 0,
-                subscriptionId = SubscriptionManager.getDefaultSubscriptionId(),
+                subscriptionId = safeSubId,
                 displayName = "Default SIM",
                 carrierName = networkOperator,
                 countryIso = country,
