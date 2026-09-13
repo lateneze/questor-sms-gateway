@@ -22,6 +22,10 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +60,7 @@ import com.questor.smsgateway.ui.theme.SuccessGreen
 import com.questor.smsgateway.ui.theme.WarningYellow
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel(),
@@ -69,6 +74,7 @@ fun SettingsScreen(
     var portText by remember(settings.serverPort) { mutableStateOf(settings.serverPort.toString()) }
     var keyText by remember(settings.gatewayKey) { mutableStateOf(settings.gatewayKey) }
     var selectedTransport by remember(settings.activeTransport) { mutableStateOf(settings.activeTransport) }
+    var transportDropdownExpanded by remember { mutableStateOf(false) }
     var selectedSimSlot by remember(settings.preferredSimSlot) { mutableIntStateOf(settings.preferredSimSlot) }
     var delaySlider by remember(settings.rateLimitDelayMs) { mutableFloatStateOf(settings.rateLimitDelayMs.toFloat()) }
     var autoBoot by remember(settings.autoStartOnBoot) { mutableStateOf(settings.autoStartOnBoot) }
@@ -83,8 +89,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
                 text = "Gateway Configuration",
@@ -92,53 +98,66 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // Active Transport Selection Card
+            // Active Transport Selection Card (Single Select Dropdown)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "Active Transport Protocol",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "Choose which transport listener is active on this phone for incoming commands.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
 
-                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                    androidx.compose.foundation.layout.FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ExposedDropdownMenuBox(
+                        expanded = transportDropdownExpanded,
+                        onExpandedChange = { transportDropdownExpanded = !transportDropdownExpanded },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        TransportMode.values().forEach { mode ->
-                            FilterChip(
-                                selected = selectedTransport == mode,
-                                onClick = { selectedTransport = mode },
-                                label = { Text(mode.displayName) }
-                            )
+                        OutlinedTextField(
+                            value = selectedTransport.displayName,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Selected Transport") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = transportDropdownExpanded) },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = transportDropdownExpanded,
+                            onDismissRequest = { transportDropdownExpanded = false }
+                        ) {
+                            TransportMode.values().forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.displayName) },
+                                    onClick = {
+                                        selectedTransport = mode
+                                        transportDropdownExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
 
+
             // HTTP & Network Settings Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "Network & Security",
@@ -169,11 +188,11 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "SIM Preference & Throttling",
@@ -199,7 +218,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
                         text = "Inter-SMS Delay: ${delaySlider.toLong()} ms",
@@ -218,11 +237,11 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "Background Resilience",
@@ -289,7 +308,7 @@ fun SettingsScreen(
                 Text("Save Settings")
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

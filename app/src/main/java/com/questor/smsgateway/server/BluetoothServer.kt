@@ -64,6 +64,7 @@ class BluetoothServer(
     private var serverJob: Job? = null
     private var serverSocket: BluetoothServerSocket? = null
     @Volatile private var isRunning = false
+    val isClientConnected = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     @SuppressLint("MissingPermission")
     fun start() {
@@ -114,6 +115,7 @@ class BluetoothServer(
     private fun handleClientSocket(socket: BluetoothSocket) {
         scope.launch {
             logger.i("BluetoothServer", "Connected to Bluetooth client: ${socket.remoteDevice?.name ?: socket.remoteDevice?.address}")
+            isClientConnected.value = true
             try {
                 val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
                 val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
@@ -130,6 +132,7 @@ class BluetoothServer(
             } catch (e: Exception) {
                 logger.w("BluetoothServer", "Bluetooth client disconnected (${e.message})")
             } finally {
+                isClientConnected.value = false
                 try { socket.close() } catch (_: Exception) {}
             }
         }
@@ -341,6 +344,7 @@ class BluetoothServer(
 
     fun stop() {
         isRunning = false
+        isClientConnected.value = false
         serverJob?.cancel()
         serverJob = null
         closeSocket()

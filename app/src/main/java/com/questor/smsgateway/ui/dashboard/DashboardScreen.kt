@@ -111,7 +111,10 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StatusBadge(isRunning = state.isServiceRunning)
+                    StatusBadge(
+                        isServiceRunning = state.isServiceRunning,
+                        isConnected = state.isPcConnected
+                    )
 
                     Button(
                         onClick = { viewModel.toggleService(context) },
@@ -156,10 +159,17 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Medium,
                             color = QuestorBlue
                         )
-                        if (state.isWebSocketConnected) {
+                        if (state.isPcConnected) {
                             Text(
-                                text = "● Questor PC WebSocket Connected (Live Stream Active)",
+                                text = "● Questor PC Connected (Live Messaging Ready)",
                                 color = SuccessGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else if (state.isServiceRunning) {
+                            Text(
+                                text = "○ Awaiting connection from Questor PC...",
+                                color = WarningYellow,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )

@@ -25,6 +25,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -59,6 +60,16 @@ class KtorHttpServer(
     private var serverEngine: ApplicationEngine? = null
     private val startTimeMillis = System.currentTimeMillis()
     @Volatile private var isRunning = false
+    @Volatile var lastActivityTimestamp: Long = 0L
+        private set
+
+    fun markActivity() {
+        lastActivityTimestamp = System.currentTimeMillis()
+    }
+
+    fun isClientActive(): Boolean {
+        return webSocketHub.hasActiveSessions() || (System.currentTimeMillis() - lastActivityTimestamp < 15_000L)
+    }
 
     fun start(port: Int = 8765) {
         if (isRunning) return
@@ -81,6 +92,7 @@ class KtorHttpServer(
             serverEngine?.stop(1000, 2000)
             serverEngine = null
             isRunning = false
+            lastActivityTimestamp = 0L
             logger.i("KtorHttpServer", "Ktor server stopped")
         } catch (e: Exception) {
             logger.w("KtorHttpServer", "Error stopping Ktor server", e)
@@ -118,8 +130,13 @@ class KtorHttpServer(
     }
 
     private fun Application.configureRoutes() {
+        intercept(ApplicationCallPipeline.Plugins) {
+            markActivity()
+        }
+
         routing {
             get("/") {
+                markActivity()
                 call.respondText(
                     "Questor SMS Gateway is running. Endpoints: /api/v1/gateway/health, /api/v1/messages, /api/v1/gateway/ws"
                 )
@@ -127,6 +144,8 @@ class KtorHttpServer(
 
             // Health Endpoint
             get("/api/v1/gateway/health") {
+                markActivity()
+
                 if (!validateAuth(call.request.header("X-Questor-Gateway-Key"))) {
                     call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Unauthorized: Invalid Gateway Key"))
                     return@get
@@ -296,6 +315,7 @@ class KtorHttpServer(
 
             // WebSocket Channel
             webSocket("/api/v1/gateway/ws") {
+                markActivity()
                 val key = call.request.header("X-Questor-Gateway-Key") ?: call.request.queryParameters["key"]
                 if (!validateAuth(key)) {
                     call.respond(HttpStatusCode.Unauthorized)
@@ -307,6 +327,7 @@ class KtorHttpServer(
 
                 try {
                     for (frame in incoming) {
+                        markActivity()
                         if (frame is Frame.Text) {
                             val text = frame.readText()
                             if (text.contains("ping", ignoreCase = true)) {

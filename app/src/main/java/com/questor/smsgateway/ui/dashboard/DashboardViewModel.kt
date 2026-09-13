@@ -29,7 +29,8 @@ data class DashboardUiState(
     val deliveredCount: Int = 0,
     val failedCount: Int = 0,
     val inboundCount: Int = 0,
-    val isWebSocketConnected: Boolean = false
+    val isWebSocketConnected: Boolean = false,
+    val isPcConnected: Boolean = false
 )
 
 class DashboardViewModel : ViewModel() {
@@ -93,12 +94,14 @@ class DashboardViewModel : ViewModel() {
                 val ip = KtorHttpServer.getLocalIpAddress(settings.activeTransport)
                 val sims = app.multiSimManager.getActiveSimCards()
                 val wsActive = app.webSocketHub.hasActiveSessions()
+                val pcConnected = GatewayForegroundService.isPcConnected(settings.activeTransport)
 
                 _uiState.value = _uiState.value.copy(
                     isServiceRunning = isRunning,
                     localIp = ip,
                     simCards = sims,
-                    isWebSocketConnected = wsActive
+                    isWebSocketConnected = wsActive,
+                    isPcConnected = pcConnected
                 )
                 delay(2000L)
             }
@@ -108,7 +111,7 @@ class DashboardViewModel : ViewModel() {
     fun toggleService(context: Context) {
         if (GatewayForegroundService.isServiceRunning) {
             GatewayForegroundService.stopService(context)
-            _uiState.value = _uiState.value.copy(isServiceRunning = false)
+            _uiState.value = _uiState.value.copy(isServiceRunning = false, isPcConnected = false)
         } else {
             GatewayForegroundService.startService(context)
             _uiState.value = _uiState.value.copy(isServiceRunning = true)

@@ -46,6 +46,7 @@ class AoaUsbServer(
     private var workerJob: Job? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
     @Volatile private var isRunning = false
+    val isAccessoryConnected = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     fun start() {
         if (isRunning || usbManager == null) return
@@ -67,6 +68,7 @@ class AoaUsbServer(
     private suspend fun handleAccessory(accessory: UsbAccessory) {
         logger.i("AoaUsbServer", "USB Accessory attached: ${accessory.description} / ${accessory.manufacturer}")
         fileDescriptor = usbManager?.openAccessory(accessory) ?: return
+        isAccessoryConnected.value = true
 
         try {
             val inputStream = FileInputStream(fileDescriptor!!.fileDescriptor)
@@ -88,6 +90,7 @@ class AoaUsbServer(
         } catch (e: Exception) {
             logger.w("AoaUsbServer", "AOA Accessory stream disconnected (${e.message})")
         } finally {
+            isAccessoryConnected.value = false
             try { fileDescriptor?.close() } catch (_: Exception) {}
             fileDescriptor = null
         }
@@ -256,6 +259,7 @@ class AoaUsbServer(
 
     fun stop() {
         isRunning = false
+        isAccessoryConnected.value = false
         workerJob?.cancel()
         workerJob = null
         try { fileDescriptor?.close() } catch (_: Exception) {}

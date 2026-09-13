@@ -47,6 +47,20 @@ class GatewayForegroundService : Service() {
         var isServiceRunning: Boolean = false
             private set
 
+        @Volatile
+        var currentInstance: GatewayForegroundService? = null
+            private set
+
+        fun isPcConnected(transport: TransportMode): Boolean {
+            if (!isServiceRunning) return false
+            val instance = currentInstance ?: return false
+            return when (transport) {
+                TransportMode.USB_TETHER, TransportMode.WIFI_LAN -> instance.ktorServer.isClientActive()
+                TransportMode.BLUETOOTH -> instance.bluetoothServer.isClientConnected.value
+                TransportMode.USB_AOA -> instance.aoaUsbServer.isAccessoryConnected.value
+            }
+        }
+
         fun startService(context: Context) {
             val intent = Intent(context, GatewayForegroundService::class.java).apply {
                 action = ACTION_START
@@ -95,6 +109,7 @@ class GatewayForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        currentInstance = this
         val app = application as GatewayApp
 
         wakeLockManager = WakeLockManager(this, app.loggerRepository)
@@ -290,6 +305,7 @@ class GatewayForegroundService : Service() {
 
     private fun stopForegroundService() {
         isServiceRunning = false
+        currentInstance = null
         unregisterNetworkCallback()
         statsJob?.cancel()
         smsDispatcher.stop()
