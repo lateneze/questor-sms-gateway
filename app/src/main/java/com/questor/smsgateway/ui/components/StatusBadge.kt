@@ -88,7 +88,7 @@ fun StatusBadge(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(bgColor)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -117,12 +117,14 @@ fun StatusBadge(
                         .background(dotColor)
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = text,
                 color = textColor,
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
+                fontSize = 11.sp,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

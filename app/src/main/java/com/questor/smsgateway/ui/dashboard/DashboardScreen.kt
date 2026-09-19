@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -113,21 +115,31 @@ fun DashboardScreen(
                 ) {
                     StatusBadge(
                         isServiceRunning = state.isServiceRunning,
-                        isConnected = state.isPcConnected
+                        isConnected = state.isPcConnected,
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)
                     )
 
                     Button(
                         onClick = { viewModel.toggleService(context) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (state.isServiceRunning) DangerRed else SuccessGreen
-                        )
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.defaultMinSize(minWidth = 75.dp, minHeight = 36.dp)
                     ) {
                         Icon(
                             imageVector = if (state.isServiceRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = null
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = if (state.isServiceRunning) "Stop" else "Start")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (state.isServiceRunning) "Stop" else "Start",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
 

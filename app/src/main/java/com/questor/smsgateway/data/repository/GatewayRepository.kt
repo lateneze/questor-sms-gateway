@@ -19,6 +19,8 @@ class GatewayRepository(private val db: GatewayDatabase) {
 
     // Outbox Operations
     suspend fun enqueueOutboxMessage(message: OutboxMessageEntity) {
+        // Clear any previous delivery report so re-enqueued/retried messages start fresh
+        db.deliveryReportDao().deleteByMessageId(message.messageId)
         db.outboxDao().insert(message)
     }
 
@@ -58,7 +60,7 @@ class GatewayRepository(private val db: GatewayDatabase) {
                 outbox.copy(
                     status = newStatus,
                     deliveredAtUtc = report.updatedAtUtc,
-                    errorMessage = if (newStatus == "FAILED") report.detail else outbox.errorMessage
+                    errorMessage = if (newStatus == "FAILED") report.detail else null
                 )
             )
         }

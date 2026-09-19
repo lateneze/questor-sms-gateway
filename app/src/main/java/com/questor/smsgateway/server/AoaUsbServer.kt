@@ -236,6 +236,25 @@ class AoaUsbServer(
                         }
                     )
                 }
+                "ACK_DELIVERY", "DELIVERY.ACK", "DELIVERY_ACK" -> {
+                    val payload = req.payload ?: error("Missing payload")
+                    val idsJson = payload["messageIds"]
+                    val messageIds = if (idsJson != null) {
+                        json.decodeFromJsonElement<List<String>>(idsJson)
+                    } else emptyList()
+
+                    if (messageIds.isNotEmpty()) {
+                        gatewayRepo.acknowledgeDeliveryReports(messageIds)
+                    }
+                    json.encodeToString(
+                        buildJsonObject {
+                            put("id", req.id)
+                            put("success", true)
+                            put("ok", true)
+                            put("data", messageIds.size)
+                        }
+                    )
+                }
                 else -> {
                     json.encodeToString(
                         buildJsonObject {

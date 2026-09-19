@@ -20,6 +20,12 @@ interface DeliveryReportDao {
     @Query("UPDATE delivery_reports SET isAcknowledged = 1 WHERE messageId IN (:messageIds)")
     suspend fun markAcknowledged(messageIds: List<String>): Int
 
+    @Query("DELETE FROM delivery_reports WHERE messageId = :messageId")
+    suspend fun deleteByMessageId(messageId: String): Int
+
+    @Query("DELETE FROM delivery_reports WHERE messageId IN (:messageIds)")
+    suspend fun deleteByMessageIds(messageIds: List<String>): Int
+
     @Query("DELETE FROM delivery_reports WHERE isAcknowledged = 1 AND updatedAtUtc < :beforeUtc")
     suspend fun cleanupOldAcknowledged(beforeUtc: Long)
 
